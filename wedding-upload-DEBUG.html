@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wedding Upload - Debug Mode</title>
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #4a5568;
+        }
+        
+        .debug-box {
+            background: #f3f4f6;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .status {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .status-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .status-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin: 10px 0;
+        }
+        
+        button:hover {
+            background: #5a67d8;
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            margin: 5px 0;
+            font-size: 16px;
+        }
+        
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: bold;
+            color: #4b5563;
+        }
+        
+        .test-results {
+            margin: 20px 0;
+        }
+        
+        .test-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .test-pass {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .test-fail {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .test-pending {
+            background: #fed7aa;
+            color: #92400e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Wedding Upload - Debug Mode</h1>
+        
+        <div id="status" class="status status-info">
+            Initialiseren...
+        </div>
+        
+        <div class="test-results" id="tests">
+            <h3>System Checks:</h3>
+            <div class="test-item test-pending" id="test-config">
+                <span>✓ Configuratie geladen</span>
+                <span id="config-status">...</span>
+            </div>
+            <div class="test-item test-pending" id="test-gapi">
+                <span>✓ Google API geladen</span>
+                <span id="gapi-status">...</span>
+            </div>
+            <div class="test-item test-pending" id="test-oauth">
+                <span>✓ OAuth geïnitialiseerd</span>
+                <span id="oauth-status">...</span>
+            </div>
+            <div class="test-item test-pending" id="test-drive">
+                <span>✓ Drive API bereikbaar</span>
+                <span id="drive-status">...</span>
+            </div>
+            <div class="test-item test-pending" id="test-auth">
+                <span>✓ Authenticatie geldig</span>
+                <span id="auth-status">...</span>
+            </div>
+        </div>
+        
+        <div>
+            <h3>Quick Setup:</h3>
+            <label>Client ID:</label>
+            <input type="text" id="clientId" placeholder="xxx.apps.googleusercontent.com">
+            
+            <label>API Key:</label>
+            <input type="text" id="apiKey" placeholder="AIzaSy...">
+            
+            <button onclick="saveAndTest()">💾 Opslaan & Testen</button>
+            <button onclick="testAPIKey()">🔑 Test API Key</button>
+            <button onclick="testDriveAPI()">📁 Test Drive API</button>
+            <button onclick="authenticate()">🔐 Authenticeren</button>
+            <button onclick="clearAll()">🗑️ Alles Wissen</button>
+        </div>
+        
+        <div class="debug-box" id="debug">
+            <strong>Debug Log:</strong><br>
+            <div id="debugLog"></div>
+        </div>
+    </div>
+    
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <script>
+        let CONFIG = {};
+        let tokenClient = null;
+        let accessToken = null;
+        
+        // Debug logger
+        function log(message, type = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const debugLog = document.getElementById('debugLog');
+            const color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'blue';
+            debugLog.innerHTML += `<span style="color:${color}">[${time}] ${message}</span><br>`;
+            debugLog.scrollTop = debugLog.scrollHeight;
+            console.log(`[${type}]`, message);
+        }
+        
+        // Update status
+        function updateStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status status-${type}`;
+        }
+        
+        // Update test
+        function updateTest(testId, status, message) {
+            const test = document.getElementById(`test-${testId}`);
+            const statusEl = document.getElementById(`${testId}-status`);
+            
+            test.className = `test-item test-${status}`;
+            statusEl.textContent = message;
+        }
+        
+        // Initialize
+        window.onload = function() {
+            log('Starting debug mode...');
+            loadConfig();
+            checkGoogleAPIs();
+        };
+        
+        // Load config
+        function loadConfig() {
+            const stored = localStorage.getItem('debugConfig');
+            if (stored) {
+                try {
+                    CONFIG = JSON.parse(stored);
+                    document.getElementById('clientId').value = CONFIG.CLIENT_ID || '';
+                    document.getElementById('apiKey').value = CONFIG.API_KEY || '';
+                    updateTest('config', 'pass', 'OK');
+                    log('Config loaded from localStorage', 'success');
+                } catch (e) {
+                    updateTest('config', 'fail', 'Error');
+                    log('Failed to load config: ' + e.message, 'error');
+                }
+            } else {
+                updateTest('config', 'fail', 'Not found');
+                log('No config found', 'error');
+            }
+        }
+        
+        // Check Google APIs
+        function checkGoogleAPIs() {
+            log('Checking Google APIs...');
+            
+            if (typeof gapi !== 'undefined') {
+                updateTest('gapi', 'pass', 'Loaded');
+                log('Google API JS loaded', 'success');
+                
+                // Load client
+                gapi.load('client', function() {
+                    log('Google client loaded', 'success');
+                    if (CONFIG.API_KEY) {
+                        initializeGAPI();
+                    }
+                });
+            } else {
+                updateTest('gapi', 'fail', 'Not loaded');
+                log('Google API not loaded!', 'error');
+                setTimeout(checkGoogleAPIs, 1000);
+            }
+        }
+        
+        // Initialize GAPI
+        function initializeGAPI() {
+            log('Initializing Google API with key: ' + CONFIG.API_KEY.substring(0, 10) + '...');
+            
+            gapi.client.init({
+                apiKey: CONFIG.API_KEY,
+                discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+            }).then(function() {
+                updateTest('drive', 'pass', 'Ready');
+                log('Drive API initialized', 'success');
+                checkOAuth();
+            }).catch(function(error) {
+                updateTest('drive', 'fail', error.error || 'Failed');
+                log('Drive API init failed: ' + JSON.stringify(error), 'error');
+                updateStatus('❌ Drive API fout - check je API key en of Drive API is geactiveerd', 'error');
+            });
+        }
+        
+        // Check OAuth
+        function checkOAuth() {
+            if (typeof google !== 'undefined' && google.accounts) {
+                updateTest('oauth', 'pass', 'Ready');
+                log('OAuth ready', 'success');
+                setupOAuth();
+            } else {
+                updateTest('oauth', 'pending', 'Waiting...');
+                log('Waiting for OAuth...');
+                setTimeout(checkOAuth, 500);
+            }
+        }
+        
+        // Setup OAuth
+        function setupOAuth() {
+            if (!CONFIG.CLIENT_ID) {
+                log('No client ID configured', 'error');
+                return;
+            }
+            
+            log('Setting up OAuth with client: ' + CONFIG.CLIENT_ID.substring(0, 20) + '...');
+            
+            try {
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: CONFIG.CLIENT_ID,
+                    scope: 'https://www.googleapis.com/auth/drive.file',
+                    callback: function(response) {
+                        if (response.error) {
+                            updateTest('auth', 'fail', response.error);
+                            log('OAuth failed: ' + response.error, 'error');
+                            updateStatus('❌ Login failed: ' + response.error, 'error');
+                        } else {
+                            accessToken = response.access_token;
+                            updateTest('auth', 'pass', 'Valid');
+                            log('OAuth successful!', 'success');
+                            updateStatus('✅ Authenticated! Token valid for 1 hour', 'success');
+                        }
+                    }
+                });
+                log('OAuth client created', 'success');
+            } catch (e) {
+                log('OAuth setup error: ' + e.message, 'error');
+            }
+        }
+        
+        // Save and test
+        function saveAndTest() {
+            CONFIG = {
+                CLIENT_ID: document.getElementById('clientId').value.trim(),
+                API_KEY: document.getElementById('apiKey').value.trim()
+            };
+            
+            if (!CONFIG.CLIENT_ID || !CONFIG.API_KEY) {
+                updateStatus('❌ Vul beide velden in!', 'error');
+                return;
+            }
+            
+            localStorage.setItem('debugConfig', JSON.stringify(CONFIG));
+            log('Config saved', 'success');
+            
+            updateStatus('Testing configuration...', 'info');
+            initializeGAPI();
+        }
+        
+        // Test API Key
+        function testAPIKey() {
+            if (!CONFIG.API_KEY) {
+                updateStatus('❌ Geen API key', 'error');
+                return;
+            }
+            
+            const url = `https://www.googleapis.com/drive/v3/about?fields=user&key=${CONFIG.API_KEY}`;
+            
+            log('Testing API key: ' + url);
+            updateStatus('Testing API key...', 'info');
+            
+            fetch(url)
+                .then(response => {
+                    log('API response: ' + response.status);
+                    if (response.status === 403) {
+                        throw new Error('API key invalid or Drive API not enabled');
+                    }
+                    if (response.status === 401) {
+                        // This is expected - need auth
+                        updateStatus('✅ API key works! (auth required for user data)', 'success');
+                        return;
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data) {
+                        log('API response: ' + JSON.stringify(data));
+                    }
+                })
+                .catch(error => {
+                    log('API test failed: ' + error.message, 'error');
+                    updateStatus('❌ ' + error.message, 'error');
+                });
+        }
+        
+        // Test Drive API
+        function testDriveAPI() {
+            if (!gapi.client || !gapi.client.drive) {
+                updateStatus('❌ Drive API not initialized', 'error');
+                return;
+            }
+            
+            updateStatus('Testing Drive API...', 'info');
+            
+            gapi.client.drive.about.get({
+                fields: 'storageQuota'
+            }).then(function(response) {
+                log('Drive API works: ' + JSON.stringify(response.result));
+                updateStatus('✅ Drive API works!', 'success');
+            }).catch(function(error) {
+                log('Drive test failed: ' + JSON.stringify(error), 'error');
+                updateStatus('❌ Drive API error - check console', 'error');
+            });
+        }
+        
+        // Authenticate
+        function authenticate() {
+            if (!tokenClient) {
+                updateStatus('❌ OAuth not configured', 'error');
+                return;
+            }
+            
+            log('Requesting authentication...');
+            tokenClient.requestAccessToken();
+        }
+        
+        // Clear all
+        function clearAll() {
+            if (confirm('Wis alle configuratie?')) {
+                localStorage.clear();
+                sessionStorage.clear();
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
