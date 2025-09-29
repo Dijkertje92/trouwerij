@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="format-detection" content="telephone=no">
+    <title>Trouwfoto's Upload - Google Drive 💕</title>
+    
+    <!-- Google API -->
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            overflow-x: hidden;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            min-height: -webkit-fill-available;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 10px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 20px;
+            max-width: 500px;
+            width: 100%;
+            position: relative;
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 0;
+            }
+            
+            .container {
+                border-radius: 0;
+                box-shadow: none;
+                max-width: 100%;
+                min-height: 100vh;
+                min-height: -webkit-fill-available;
+                padding: 15px;
+            }
+        }
+
+        /* Info Box */
+        .info-box {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: white;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .info-box.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        .info-box.error {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .header h1 {
+            color: #4a5568;
+            font-size: 24px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: #718096;
+            font-size: 15px;
+        }
+
+        /* Upload Options */
+        .upload-options {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .upload-option {
+            flex: 1;
+            padding: 30px 15px;
+            border: 3px solid #cbd5e0;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(102, 126, 234, 0.05);
+            text-align: center;
+        }
+
+        .upload-option:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .upload-option.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .upload-option.disabled:hover {
+            transform: none;
+        }
+
+        .upload-option-icon {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+
+        .upload-option-text {
+            color: #4a5568;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Admin Controls */
+        .admin-controls {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px 0;
+            color: white;
+            text-align: center;
+        }
+
+        .admin-controls button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        /* Preview */
+        .preview-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 20px 0;
+            max-height: 250px;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        @media (max-width: 480px) {
+            .preview-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .preview-item {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            aspect-ratio: 1;
+        }
+
+        .preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .preview-item .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Progress */
+        .progress-container {
+            display: none;
+            background: #e2e8f0;
+            border-radius: 10px;
+            height: 30px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .progress-container.show {
+            display: block;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border-radius: 10px;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Button */
+        .btn {
+            padding: 14px 28px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            margin: 8px 4px;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Hidden inputs */
+        #fileInputCamera, #fileInputGallery {
+            display: none;
+        }
+
+        /* iOS fixes */
+        @supports (-webkit-touch-callout: none) {
+            body {
+                padding-bottom: env(safe-area-inset-bottom);
+            }
+            
+            .container {
+                padding-bottom: calc(20px + env(safe-area-inset-bottom));
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Info Box -->
+        <div id="infoBox" class="info-box">
+            ⏳ App aan het laden...
+        </div>
+
+        <!-- Header -->
+        <div class="header">
+            <h1>📸 Trouwfoto's Delen</h1>
+            <p>Upload je mooiste momenten! 💕</p>
+        </div>
+
+        <!-- Admin Controls (alleen voor jou) -->
+        <div id="adminControls" class="admin-controls" style="display: none;">
+            <p><strong>🔐 Admin Mode</strong></p>
+            <button onclick="authorizeAdmin()">Login met Google</button>
+            <button onclick="revokeAccess()">Logout</button>
+            <button onclick="testUpload()">Test Upload</button>
+        </div>
+
+        <!-- Upload Options -->
+        <div class="upload-options">
+            <div id="cameraOption" class="upload-option disabled" onclick="selectCamera()">
+                <div class="upload-option-icon">📷</div>
+                <div class="upload-option-text">Maak foto</div>
+            </div>
+            <div id="galleryOption" class="upload-option disabled" onclick="selectGallery()">
+                <div class="upload-option-icon">🖼️</div>
+                <div class="upload-option-text">Kies uit galerij</div>
+            </div>
+        </div>
+
+        <!-- Hidden file inputs -->
+        <input type="file" id="fileInputCamera" accept="image/*" capture="environment" multiple>
+        <input type="file" id="fileInputGallery" accept="image/*" multiple>
+        
+        <!-- Preview -->
+        <div class="preview-container" id="previewContainer"></div>
+        
+        <!-- Progress -->
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar" id="progressBar">0%</div>
+        </div>
+        
+        <!-- Upload Button -->
+        <div style="text-align: center;">
+            <button id="uploadButton" class="btn btn-primary" onclick="uploadFiles()" style="display:none;" disabled>
+                ✨ Upload Foto's
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ====== BELANGRIJK: VULL DEZE GEGEVENS IN! ======
+        const CONFIG = {
+            // Van je Google Cloud Console (OAuth 2.0 Client ID)
+            CLIENT_ID: '561992652513-pv3bc75df5ma7bl94t3gdn7etcfr9ta5.apps.googleusercontent.com',
+            
+            // Van je Google Cloud Console (API Key)
+            API_KEY: 'AIzaSyCTn-z7JaLtALqHGRGMvzJDOONkqW8cuKE',
+            
+            // Naam van de map in Google Drive
+            FOLDER_NAME: 'MARRYME',
+            
+            // Admin check - als URL deze parameter bevat, toon admin controls
+            ADMIN_KEY: 'chantalisgek',  // Wijzig dit naar iets geheims!
+            
+            // Service Account (voor publieke uploads) - OPTIONEEL
+            // Als je dit gebruikt, kunnen gasten uploaden zonder in te loggen
+            USE_SERVICE_ACCOUNT: false,
+            SERVICE_ACCOUNT_KEY: null  // Hier zou je service account key komen
+        };
+        // ================================================
+
+        let DISCOVERY_DOCS = ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'];
+        let SCOPES = 'https://www.googleapis.com/auth/drive.file';
+        
+        let tokenClient;
+        let accessToken = null;
+        let selectedFiles = [];
+        let isAdmin = false;
+        let isReady = false;
+
+        // Check if admin
+        function checkAdmin() {
+            const urlParams = new URLSearchParams(window.location.search);
+            isAdmin = urlParams.get('key') === CONFIG.ADMIN_KEY;
+            
+            if (isAdmin) {
+                document.getElementById('adminControls').style.display = 'block';
+                updateStatus('🔐 Admin mode actief', 'success');
+            }
+        }
+
+        // Initialize
+        window.onload = function() {
+            checkAdmin();
+            setupEventListeners();
+            
+            // Check stored token
+            const storedToken = sessionStorage.getItem('accessToken');
+            if (storedToken) {
+                accessToken = storedToken;
+                isReady = true;
+                enableUpload();
+                updateStatus('✅ Klaar om foto\'s te uploaden!', 'success');
+            } else if (!isAdmin) {
+                // For guests, try to use a pre-authorized token
+                checkGuestAccess();
+            } else {
+                updateStatus('⚠️ Admin: login met Google om te activeren', 'error');
+            }
+            
+            // Load Google API
+            gapi.load('client', initializeGoogleAPI);
+        };
+
+        // Initialize Google API
+        async function initializeGoogleAPI() {
+            try {
+                await gapi.client.init({
+                    apiKey: CONFIG.API_KEY,
+                    discoveryDocs: DISCOVERY_DOCS,
+                });
+                
+                // Initialize token client for admin
+                if (isAdmin) {
+                    tokenClient = google.accounts.oauth2.initTokenClient({
+                        client_id: CONFIG.CLIENT_ID,
+                        scope: SCOPES,
+                        callback: (tokenResponse) => {
+                            accessToken = tokenResponse.access_token;
+                            sessionStorage.setItem('accessToken', accessToken);
+                            
+                            // Store token for guests (BELANGRIJK!)
+                            localStorage.setItem('guestToken', accessToken);
+                            localStorage.setItem('tokenExpiry', Date.now() + (3600 * 1000)); // 1 hour
+                            
+                            isReady = true;
+                            enableUpload();
+                            updateStatus('✅ Succesvol ingelogd! App is actief voor alle gasten.', 'success');
+                        },
+                    });
+                }
+            } catch (error) {
+                console.error('Error initializing Google API:', error);
+                updateStatus('❌ Fout bij laden Google API', 'error');
+            }
+        }
+
+        // Check guest access
+        function checkGuestAccess() {
+            const guestToken = localStorage.getItem('guestToken');
+            const tokenExpiry = localStorage.getItem('tokenExpiry');
+            
+            if (guestToken && tokenExpiry && Date.now() < parseInt(tokenExpiry)) {
+                accessToken = guestToken;
+                isReady = true;
+                enableUpload();
+                updateStatus('✅ Klaar om foto\'s te uploaden!', 'success');
+            } else {
+                updateStatus('⚠️ App moet eerst geactiveerd worden door organisator', 'error');
+                disableUpload();
+            }
+        }
+
+        // Admin authorize
+        function authorizeAdmin() {
+            if (tokenClient) {
+                tokenClient.requestAccessToken();
+            }
+        }
+
+        // Revoke access
+        function revokeAccess() {
+            if (accessToken) {
+                google.accounts.oauth2.revoke(accessToken, () => {
+                    accessToken = null;
+                    sessionStorage.removeItem('accessToken');
+                    localStorage.removeItem('guestToken');
+                    localStorage.removeItem('tokenExpiry');
+                    isReady = false;
+                    disableUpload();
+                    updateStatus('Uitgelogd', 'error');
+                });
+            }
+        }
+
+        // Enable upload
+        function enableUpload() {
+            document.getElementById('cameraOption').classList.remove('disabled');
+            document.getElementById('galleryOption').classList.remove('disabled');
+        }
+
+        // Disable upload
+        function disableUpload() {
+            document.getElementById('cameraOption').classList.add('disabled');
+            document.getElementById('galleryOption').classList.add('disabled');
+        }
+
+        // Update status
+        function updateStatus(message, type = '') {
+            const infoBox = document.getElementById('infoBox');
+            infoBox.textContent = message;
+            infoBox.className = 'info-box ' + type;
+        }
+
+        // Setup event listeners
+        function setupEventListeners() {
+            document.getElementById('fileInputCamera').addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+            
+            document.getElementById('fileInputGallery').addEventListener('change', (e) => {
+                handleFiles(e.target.files);
+            });
+            
+            // Prevent iOS bounce
+            document.body.addEventListener('touchmove', function(e) {
+                if (!e.target.closest('.preview-container')) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+        }
+
+        // Select camera
+        function selectCamera() {
+            if (!isReady) {
+                updateStatus('App is nog niet klaar', 'error');
+                return;
+            }
+            document.getElementById('fileInputCamera').click();
+        }
+
+        // Select gallery
+        function selectGallery() {
+            if (!isReady) {
+                updateStatus('App is nog niet klaar', 'error');
+                return;
+            }
+            document.getElementById('fileInputGallery').click();
+        }
+
+        // Handle files
+        function handleFiles(files) {
+            const validFiles = Array.from(files).filter(file => {
+                if (!file.type.startsWith('image/')) {
+                    return false;
+                }
+                if (file.size > 10 * 1024 * 1024) {
+                    updateStatus(`${file.name} is te groot (max 10MB)`, 'error');
+                    return false;
+                }
+                return true;
+            });
+            
+            if (validFiles.length === 0) {
+                updateStatus('Geen geldige foto\'s geselecteerd', 'error');
+                return;
+            }
+            
+            selectedFiles = [...selectedFiles, ...validFiles];
+            
+            if (selectedFiles.length > 20) {
+                selectedFiles = selectedFiles.slice(0, 20);
+                updateStatus('Maximum 20 foto\'s per keer', 'error');
+            }
+            
+            showPreviews(selectedFiles);
+            document.getElementById('uploadButton').style.display = 'inline-block';
+            document.getElementById('uploadButton').disabled = false;
+        }
+
+        // Show previews
+        function showPreviews(files) {
+            const container = document.getElementById('previewContainer');
+            container.innerHTML = '';
+            
+            files.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const div = document.createElement('div');
+                    div.className = 'preview-item';
+                    div.innerHTML = `
+                        <img src="${e.target.result}" alt="${file.name}">
+                        <button class="remove-btn" onclick="removeFile(${index})">×</button>
+                    `;
+                    container.appendChild(div);
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // Remove file
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            showPreviews(selectedFiles);
+            
+            if (selectedFiles.length === 0) {
+                document.getElementById('uploadButton').style.display = 'none';
+            }
+        }
+
+        // Get or create folder
+        async function getOrCreateFolder() {
+            const response = await gapi.client.drive.files.list({
+                q: `name='${CONFIG.FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+                fields: 'files(id, name)',
+            });
+            
+            if (response.result.files && response.result.files.length > 0) {
+                return response.result.files[0].id;
+            }
+            
+            // Create folder
+            const folderMetadata = {
+                name: CONFIG.FOLDER_NAME,
+                mimeType: 'application/vnd.google-apps.folder',
+            };
+            
+            const folder = await gapi.client.drive.files.create({
+                resource: folderMetadata,
+                fields: 'id',
+            });
+            
+            return folder.result.id;
+        }
+
+        // Upload files
+        async function uploadFiles() {
+            if (!accessToken) {
+                updateStatus('Geen toegang tot Google Drive', 'error');
+                return;
+            }
+            
+            if (selectedFiles.length === 0) {
+                updateStatus('Geen bestanden geselecteerd', 'error');
+                return;
+            }
+            
+            document.getElementById('uploadButton').disabled = true;
+            document.getElementById('progressContainer').classList.add('show');
+            
+            try {
+                const folderId = await getOrCreateFolder();
+                
+                let uploaded = 0;
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
+                    await uploadFile(file, folderId);
+                    uploaded++;
+                    updateProgress(((i + 1) / selectedFiles.length) * 100);
+                }
+                
+                updateStatus(`✅ ${uploaded} foto's succesvol geüpload!`, 'success');
+                resetUpload();
+            } catch (error) {
+                console.error('Upload error:', error);
+                updateStatus('Fout bij uploaden. Probeer opnieuw.', 'error');
+                document.getElementById('uploadButton').disabled = false;
+            }
+            
+            document.getElementById('progressContainer').classList.remove('show');
+        }
+
+        // Upload single file
+        async function uploadFile(file, folderId) {
+            const metadata = {
+                name: `foto_${Date.now()}_${file.name}`,
+                parents: [folderId],
+            };
+            
+            const form = new FormData();
+            form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+            form.append('file', file);
+            
+            const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                },
+                body: form,
+            });
+            
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+            
+            return response.json();
+        }
+
+        // Update progress
+        function updateProgress(percentage) {
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = percentage + '%';
+            progressBar.textContent = Math.round(percentage) + '%';
+        }
+
+        // Reset upload
+        function resetUpload() {
+            selectedFiles = [];
+            document.getElementById('previewContainer').innerHTML = '';
+            document.getElementById('uploadButton').style.display = 'none';
+            document.getElementById('fileInputCamera').value = '';
+            document.getElementById('fileInputGallery').value = '';
+        }
+
+        // Test upload
+        async function testUpload() {
+            if (!accessToken) {
+                updateStatus('Login eerst met Google', 'error');
+                return;
+            }
+            
+            updateStatus('Test upload...', '');
+            
+            try {
+                const folderId = await getOrCreateFolder();
+                updateStatus('✅ Test geslaagd! Map gevonden/aangemaakt.', 'success');
+            } catch (error) {
+                updateStatus('❌ Test mislukt: ' + error.message, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
