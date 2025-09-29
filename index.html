@@ -4,13 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <title>Trouwfoto Upload - Rick & Chantal 💕</title>
+    <title>Trouwfoto's Upload - Rick & Chantal 💕</title>
     
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -76,22 +77,21 @@
             color: #92400e;
         }
 
-        .setup-panel {
+        .admin-panel {
             background: #f3f4f6;
             border-radius: 15px;
-            padding: 25px;
+            padding: 20px;
             margin-bottom: 20px;
         }
 
-        .setup-panel h2 {
+        .admin-panel h3 {
             color: #1f2937;
-            font-size: 20px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             text-align: center;
         }
 
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
 
         .form-group label {
@@ -99,27 +99,15 @@
             color: #4b5563;
             font-size: 14px;
             font-weight: 600;
-            margin-bottom: 8px;
+            margin-bottom: 5px;
         }
 
         .form-group input {
             width: 100%;
-            padding: 12px;
+            padding: 10px;
             border: 2px solid #e5e7eb;
             border-radius: 8px;
             font-size: 16px;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .form-group small {
-            display: block;
-            color: #6b7280;
-            font-size: 12px;
-            margin-top: 5px;
         }
 
         .upload-panel {
@@ -244,11 +232,6 @@
             color: white;
         }
 
-        .btn-danger {
-            background: #ef4444;
-            color: white;
-        }
-
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -269,6 +252,16 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        .token-info {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6b7280;
+        }
     </style>
 </head>
 <body>
@@ -279,41 +272,42 @@
         </div>
 
         <div id="statusBox" class="status-box status-loading">
-            ⏳ Pagina wordt geladen...
+            ⏳ Systeem wordt geladen...
         </div>
 
-        <div id="setupPanel" class="setup-panel" style="display: none;">
-            <h2>⚙️ Configuratie Setup</h2>
+        <!-- Setup Panel (eerste keer) -->
+        <div id="setupPanel" class="admin-panel" style="display: none;">
+            <h3>⚙️ Eenmalige Setup</h3>
             
             <div class="form-group">
                 <label>Google Client ID:</label>
-                <input type="text" id="clientId" placeholder="123456.apps.googleusercontent.com">
-                <small>Van Google Cloud Console</small>
+                <input type="text" id="clientId" placeholder="xxx.apps.googleusercontent.com">
             </div>
             
             <div class="form-group">
                 <label>Google API Key:</label>
                 <input type="password" id="apiKey" placeholder="AIzaSy...">
-                <small>Van Google Cloud Console</small>
             </div>
             
             <div class="form-group">
-                <label>Map naam in Google Drive:</label>
-                <input type="text" id="folderName" value="MARRYME">
-                <small>Waar de foto's opgeslagen worden</small>
+                <label>Firebase Config (voor token sharing):</label>
+                <input type="text" id="firebaseConfig" placeholder='{"apiKey":"...","databaseURL":"..."}'>
             </div>
             
-            <div class="form-group">
-                <label>Admin wachtwoord:</label>
-                <input type="text" id="adminKey" placeholder="chantalisgek">
-                <small>Voor admin toegang</small>
-            </div>
-            
-            <button class="btn btn-success" onclick="saveConfig()">💾 Opslaan</button>
-            <button class="btn btn-primary" onclick="loginAdmin()">🔑 Login met Google</button>
-            <button class="btn btn-danger" onclick="resetAll()">🗑️ Reset</button>
+            <button class="btn btn-success" onclick="saveSetup()">💾 Opslaan</button>
         </div>
 
+        <!-- Admin Panel (dagelijks) -->
+        <div id="adminPanel" class="admin-panel" style="display: none;">
+            <h3>🔐 Admin Activatie</h3>
+            <p style="text-align: center; color: #6b7280; margin-bottom: 15px;">
+                Login om de app voor vandaag te activeren
+            </p>
+            <button class="btn btn-primary" onclick="loginAdmin()">🔑 Login met Google</button>
+            <div id="tokenInfo" class="token-info" style="display: none;"></div>
+        </div>
+
+        <!-- Upload Panel (voor gasten) -->
         <div id="uploadPanel" class="upload-panel">
             <div class="upload-buttons">
                 <div class="upload-btn" onclick="openCamera()">
@@ -341,66 +335,119 @@
         <input type="file" id="fileGallery" accept="image/*" multiple>
     </div>
 
+    <!-- Google & Firebase -->
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
 
     <script>
-        // Configuration
+        // Global variables
         let CONFIG = {};
+        let firebaseApp = null;
+        let database = null;
+        let tokenClient = null;
+        let accessToken = null;
         let isAdmin = false;
         let isReady = false;
         let selectedFiles = [];
-        let accessToken = null;
-        let tokenClient = null;
 
         // Initialize
         window.onload = function() {
-            console.log('Starting app...');
+            console.log('Starting wedding uploader...');
             loadConfig();
-            checkAdmin();
-            initApp();
-            setupFiles();
         };
 
-        // Load config
+        // Load configuration
         function loadConfig() {
             const stored = localStorage.getItem('weddingConfig');
+            
             if (stored) {
                 try {
                     CONFIG = JSON.parse(stored);
                     console.log('Config loaded');
+                    checkAdmin();
+                    initializeServices();
                 } catch (e) {
                     console.error('Invalid config');
+                    showSetup();
+                }
+            } else {
+                // Check URL for setup
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('key') === 'setup') {
+                    showSetup();
+                } else {
+                    showStatus('❌ App niet geconfigureerd. Ga naar ?key=setup', 'error');
                 }
             }
         }
 
-        // Check admin
+        // Show setup panel
+        function showSetup() {
+            document.getElementById('setupPanel').style.display = 'block';
+            showStatus('Vul de configuratie in', 'warning');
+        }
+
+        // Save setup
+        function saveSetup() {
+            const clientId = document.getElementById('clientId').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const firebaseConfig = document.getElementById('firebaseConfig').value.trim();
+            
+            if (!clientId || !apiKey || !firebaseConfig) {
+                showStatus('Vul alle velden in!', 'error');
+                return;
+            }
+            
+            try {
+                CONFIG = {
+                    CLIENT_ID: clientId,
+                    API_KEY: apiKey,
+                    FIREBASE: JSON.parse(firebaseConfig),
+                    FOLDER_NAME: 'MARRYME',
+                    ADMIN_KEY: 'chantalisgek'
+                };
+                
+                localStorage.setItem('weddingConfig', JSON.stringify(CONFIG));
+                showStatus('✅ Configuratie opgeslagen!', 'success');
+                
+                setTimeout(() => location.reload(), 1500);
+            } catch (e) {
+                showStatus('Ongeldige Firebase config', 'error');
+            }
+        }
+
+        // Check if admin
         function checkAdmin() {
             const urlParams = new URLSearchParams(window.location.search);
             const key = urlParams.get('key');
             
-            if (key === 'setup' || (CONFIG.ADMIN_KEY && key === CONFIG.ADMIN_KEY)) {
+            if (key === CONFIG.ADMIN_KEY || key === 'admin') {
                 isAdmin = true;
-                console.log('Admin mode');
+                console.log('Admin mode activated');
             }
         }
 
-        // Initialize app
-        function initApp() {
-            if (!CONFIG.CLIENT_ID || !CONFIG.API_KEY) {
-                if (isAdmin) {
-                    showSetup();
-                    showStatus('Vul je Google gegevens in', 'warning');
-                } else {
-                    showStatus('App moet eerst geconfigureerd worden', 'error');
-                }
-                return;
-            }
-
-            showStatus('Google wordt geladen...', 'loading');
+        // Initialize services
+        function initializeServices() {
+            showStatus('Services initialiseren...', 'loading');
             
-            // Load Google API
+            // Initialize Firebase
+            if (CONFIG.FIREBASE) {
+                try {
+                    firebaseApp = firebase.initializeApp(CONFIG.FIREBASE);
+                    database = firebase.database();
+                    console.log('Firebase initialized');
+                    
+                    // Listen for token updates
+                    listenForToken();
+                } catch (e) {
+                    console.error('Firebase init error:', e);
+                }
+            }
+            
+            // Initialize Google API
             gapi.load('client', function() {
                 gapi.client.init({
                     apiKey: CONFIG.API_KEY,
@@ -408,11 +455,15 @@
                 }).then(function() {
                     console.log('Google API ready');
                     setupOAuth();
-                    checkToken();
+                    
+                    if (!isAdmin) {
+                        checkSharedToken();
+                    } else {
+                        showAdminPanel();
+                    }
                 }).catch(function(error) {
                     console.error('API error:', error);
-                    showStatus('Fout met Google API', 'error');
-                    if (isAdmin) showSetup();
+                    showStatus('Google API fout', 'error');
                 });
             });
         }
@@ -429,38 +480,112 @@
                 scope: 'https://www.googleapis.com/auth/drive.file',
                 callback: function(response) {
                     if (response.error) {
-                        showStatus('Login mislukt', 'error');
+                        showStatus('Login mislukt: ' + response.error, 'error');
                         return;
                     }
                     
                     accessToken = response.access_token;
-                    localStorage.setItem('sharedToken', accessToken);
-                    localStorage.setItem('tokenTime', Date.now());
+                    console.log('Login successful');
                     
-                    showStatus('Succesvol ingelogd!', 'success');
+                    // Share token via Firebase
+                    shareToken(accessToken);
+                    
                     enableUpload();
+                    showStatus('✅ App geactiveerd voor ALLE gebruikers!', 'success');
+                    
+                    // Show token info for admin
+                    if (isAdmin) {
+                        showTokenInfo();
+                    }
                 }
             });
-
-            if (isAdmin && !accessToken) {
-                setTimeout(function() {
-                    loginAdmin();
-                }, 1000);
-            }
         }
 
-        // Check token
-        function checkToken() {
-            const token = localStorage.getItem('sharedToken');
-            const tokenTime = localStorage.getItem('tokenTime');
-            const hourAgo = Date.now() - 3600000;
+        // Share token via Firebase
+        function shareToken(token) {
+            if (!database) {
+                console.error('Firebase not initialized');
+                return;
+            }
             
-            if (token && tokenTime && parseInt(tokenTime) > hourAgo) {
-                accessToken = token;
-                enableUpload();
-            } else if (!isAdmin) {
-                showStatus('Wacht op activatie...', 'warning');
-                setTimeout(checkToken, 5000);
+            const tokenData = {
+                token: token,
+                timestamp: Date.now(),
+                expiresAt: Date.now() + (55 * 60 * 1000) // 55 minutes
+            };
+            
+            database.ref('sharedToken').set(tokenData).then(() => {
+                console.log('Token shared via Firebase');
+            }).catch(error => {
+                console.error('Firebase write error:', error);
+            });
+        }
+
+        // Listen for token updates
+        function listenForToken() {
+            if (!database) return;
+            
+            database.ref('sharedToken').on('value', (snapshot) => {
+                const data = snapshot.val();
+                
+                if (data && data.token && data.expiresAt > Date.now()) {
+                    accessToken = data.token;
+                    console.log('Token received from Firebase');
+                    
+                    if (!isAdmin) {
+                        enableUpload();
+                    }
+                }
+            });
+        }
+
+        // Check shared token
+        function checkSharedToken() {
+            if (!database) {
+                showStatus('Firebase niet geconfigureerd', 'error');
+                return;
+            }
+            
+            showStatus('Controleren op actieve sessie...', 'loading');
+            
+            database.ref('sharedToken').once('value').then((snapshot) => {
+                const data = snapshot.val();
+                
+                if (data && data.token && data.expiresAt > Date.now()) {
+                    accessToken = data.token;
+                    const minutesLeft = Math.round((data.expiresAt - Date.now()) / 60000);
+                    console.log(`Token valid for ${minutesLeft} minutes`);
+                    enableUpload();
+                } else {
+                    showStatus('⏳ Wacht op admin activatie...', 'warning');
+                    
+                    // Keep checking
+                    setTimeout(checkSharedToken, 5000);
+                }
+            });
+        }
+
+        // Show admin panel
+        function showAdminPanel() {
+            document.getElementById('adminPanel').style.display = 'block';
+            showStatus('Login om app te activeren', 'warning');
+        }
+
+        // Show token info
+        function showTokenInfo() {
+            const info = document.getElementById('tokenInfo');
+            info.style.display = 'block';
+            info.innerHTML = `
+                <strong>✅ App geactiveerd!</strong><br>
+                Token geldig tot: ${new Date(Date.now() + 55*60*1000).toLocaleTimeString()}<br>
+                Alle gasten kunnen nu uploaden zonder login.
+            `;
+        }
+
+        // Login admin
+        function loginAdmin() {
+            if (tokenClient) {
+                tokenClient.requestAccessToken();
             }
         }
 
@@ -469,18 +594,9 @@
             isReady = true;
             document.getElementById('uploadPanel').classList.add('active');
             document.getElementById('setupPanel').style.display = 'none';
-            showStatus('Klaar om foto\'s te uploaden!', 'success');
-        }
-
-        // Show setup
-        function showSetup() {
-            document.getElementById('setupPanel').style.display = 'block';
-            if (CONFIG.CLIENT_ID) {
-                document.getElementById('clientId').value = CONFIG.CLIENT_ID;
-                document.getElementById('apiKey').value = CONFIG.API_KEY;
-                document.getElementById('folderName').value = CONFIG.FOLDER_NAME || 'MARRYME';
-                document.getElementById('adminKey').value = CONFIG.ADMIN_KEY;
-            }
+            document.getElementById('adminPanel').style.display = 'none';
+            showStatus('✅ Klaar om foto\'s te uploaden!', 'success');
+            setupFileHandlers();
         }
 
         // Show status
@@ -490,44 +606,8 @@
             box.className = 'status-box status-' + type;
         }
 
-        // Save config
-        function saveConfig() {
-            CONFIG = {
-                CLIENT_ID: document.getElementById('clientId').value.trim(),
-                API_KEY: document.getElementById('apiKey').value.trim(),
-                FOLDER_NAME: document.getElementById('folderName').value.trim() || 'MARRYME',
-                ADMIN_KEY: document.getElementById('adminKey').value.trim() || 'admin'
-            };
-
-            if (!CONFIG.CLIENT_ID || !CONFIG.API_KEY) {
-                showStatus('Vul alle velden in!', 'error');
-                return;
-            }
-
-            localStorage.setItem('weddingConfig', JSON.stringify(CONFIG));
-            showStatus('Opgeslagen! Pagina herlaadt...', 'success');
-            setTimeout(function() { location.reload(); }, 1500);
-        }
-
-        // Login admin
-        function loginAdmin() {
-            if (tokenClient) {
-                tokenClient.requestAccessToken();
-            } else {
-                showStatus('Even wachten...', 'warning');
-            }
-        }
-
-        // Reset all
-        function resetAll() {
-            if (confirm('Alles wissen?')) {
-                localStorage.clear();
-                location.reload();
-            }
-        }
-
-        // Setup files
-        function setupFiles() {
+        // Setup file handlers
+        function setupFileHandlers() {
             document.getElementById('fileCamera').addEventListener('change', handleFiles);
             document.getElementById('fileGallery').addEventListener('change', handleFiles);
         }
@@ -541,7 +621,7 @@
             document.getElementById('fileCamera').click();
         }
 
-        // Open gallery
+        // Open gallery  
         function openGallery() {
             if (!isReady) {
                 showStatus('App niet klaar', 'error');
@@ -552,7 +632,7 @@
 
         // Handle files
         function handleFiles(e) {
-            const files = Array.from(e.target.files).filter(function(file) {
+            const files = Array.from(e.target.files).filter(file => {
                 if (!file.type.startsWith('image/')) return false;
                 if (file.size > 10485760) {
                     showStatus('Te groot (max 10MB)', 'error');
@@ -571,12 +651,12 @@
             const grid = document.getElementById('previewGrid');
             grid.innerHTML = '';
             
-            selectedFiles.forEach(function(file, index) {
+            selectedFiles.forEach((file, index) => {
                 const reader = new FileReader();
-                reader.onload = function(e) {
+                reader.onload = (e) => {
                     const item = document.createElement('div');
                     item.className = 'preview-item';
-                    item.innerHTML = '<img src="' + e.target.result + '"><button onclick="removeFile(' + index + ')">×</button>';
+                    item.innerHTML = `<img src="${e.target.result}"><button onclick="removeFile(${index})">×</button>`;
                     grid.appendChild(item);
                 };
                 reader.readAsDataURL(file);
@@ -604,16 +684,14 @@
             showStatus('Uploaden...', 'loading');
 
             try {
-                // Get folder
                 const folderId = await getFolder();
                 
-                // Upload files
                 for (let i = 0; i < selectedFiles.length; i++) {
                     await uploadFile(selectedFiles[i], folderId);
                     updateProgress((i + 1) / selectedFiles.length * 100);
                 }
 
-                showStatus('Klaar! ' + selectedFiles.length + ' foto\'s geupload!', 'success');
+                showStatus('✅ ' + selectedFiles.length + ' foto\'s geüpload!', 'success');
                 selectedFiles = [];
                 showPreviews();
                 
@@ -623,17 +701,15 @@
             }
 
             document.getElementById('uploadBtn').disabled = false;
-            setTimeout(function() {
+            setTimeout(() => {
                 document.getElementById('progressBar').classList.remove('active');
             }, 2000);
         }
 
         // Get folder
         async function getFolder() {
-            const folderName = CONFIG.FOLDER_NAME || 'MARRYME';
-            
             const response = await gapi.client.drive.files.list({
-                q: "name='" + folderName + "' and mimeType='application/vnd.google-apps.folder'",
+                q: "name='" + CONFIG.FOLDER_NAME + "' and mimeType='application/vnd.google-apps.folder'",
                 fields: 'files(id)'
             });
 
@@ -641,10 +717,9 @@
                 return response.result.files[0].id;
             }
 
-            // Create folder
             const folder = await gapi.client.drive.files.create({
                 resource: {
-                    name: folderName,
+                    name: CONFIG.FOLDER_NAME,
                     mimeType: 'application/vnd.google-apps.folder'
                 },
                 fields: 'id'
